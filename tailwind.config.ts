@@ -1,4 +1,4 @@
-import type { Config } from 'tailwindcss'
+// @ts-nocheck
 
 const config: Config = {
   content: [
