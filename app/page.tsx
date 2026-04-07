@@ -1,121 +1,83 @@
-import { supabase } from "@/lib/supabase";
-import { daysUntilExpiry } from "@/lib/auth";
-import Link from "next/link";
-import { Sidebar } from "@/components/Sidebar";
+import { createClient } from '@supabase/supabase-js';
 
-const BADGE: Record<string, string> = {
-  identity:"cat-badge-identity",audience:"cat-badge-audience",offers:"cat-badge-offers",
-  outbound:"cat-badge-outbound",strategy:"cat-badge-strategy",design:"cat-badge-design",
-  platform:"cat-badge-platform",operations:"cat-badge-operations",debriefs:"cat-badge-debriefs",
-  market:"cat-badge-market",meta:"cat-badge-meta",
-};
-
-const CAT_DESC: Record<string, string> = {
-  identity:"Brand identity, founder, positioning",
-  audience:"ICP, client profiles, industries, language",
-  offers:"Value ladder, pricing, products",
-  proof:"Testimonials, case studies, metrics",
-  voice:"Tone, patterns, teaching style",
-  market:"Competitive landscape, trends",
-  strategy:"Content, email, GTM, build-in-public",
-  outbound:"Cold pipeline, warm nurture, KPIs",
-  design:"Visual identity, palettes, accessibility",
-  platform:"Architecture, database, RBAC, DR",
-  operations:"SOPs, workflows, skills matrix",
-  debriefs:"Post-call analysis and coaching notes",
-  frameworks:"Proprietary methods and models",
-  meta:"Wiki structure and maintenance",
-};
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const { data: articles } = await supabase
-    .from("wiki_articles")
-    .select("id, slug, title, category, subcategory, word_count, status, updated_at")
-    .order("updated_at", { ascending: false });
-  
-  if (!articles) return <div>Error loading wiki</div>;
-  
-  const totalWords = articles.reduce((s, a) => s + (a.word_count || 0), 0);
-  const cats: Record<string, number> = {};
-  articles.forEach(a => { cats[a.category] = (cats[a.category] || 0) + 1; });
-  const recent = articles.slice(0, 6);
-  const days = daysUntilExpiry();
-  const activeCount = articles.filter(a => a.status === "active").length;
-  
+  const [healthRes, categoriesRes, recentRes] = await Promise.all([
+    supabase.from('wiki_health').select('*').single(),
+    supabase.from('wiki_by_category').select('*'),
+    supabase.from('wiki_articles')
+      .select('slug, title, category, updated_at, word_count')
+      .eq('status', 'active')
+      .order('updated_at', { ascending: false })
+      .limit(8),
+  ]);
+
+  const health = healthRes.data;
+  const categories = categoriesRes.data || [];
+  const recent = recentRes.data || [];
+
   return (
-    <>
-      {days <= 7 && (
-        <div className={`expiry-bar ${days <= 3 ? "danger" : "warning"}`}>
-          Password expires in {days} day{days !== 1 ? "s" : ""}. Update WIKI_PASSWORD_HASH in Vercel.
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: '2rem 1rem', fontFamily: 'system-ui, sans-serif' }}>
+      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '2rem', fontWeight: 700 }}>D4TW Wiki</h1>
+        <p style={{ color: '#666' }}>Brand intelligence base for Design for the Web</p>
+        {health && (
+          <p style={{ color: '#999', fontSize: '0.875rem' }}>
+            {health.total_articles} articles · {health.total_words?.toLocaleString()} words · {health.categories} categories
+          </p>
+        )}
+      </div>
+
+      {health && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+          {[
+            { label: 'Articles', value: health.active_articles },
+            { label: 'Words', value: health.total_words?.toLocaleString() },
+            { label: 'High Confidence', value: health.high_confidence },
+            { label: 'Debriefs', value: health.total_debriefs },
+          ].map((s) => (
+            <div key={s.label} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '1rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.5rem', fontWeight: 700 }}>{s.value}</div>
+              <div style={{ fontSize: '0.75rem', color: '#888' }}>{s.label}</div>
+            </div>
+          ))}
         </div>
       )}
-      <div className="page-wrapper">
-        <Sidebar articles={articles} />
-        <div style={{ flex: 1 }}>
-          <div className="header-bar">
-            <div><Link href="/" style={{color:"var(--text)",fontWeight:600}}>D4TW Wiki</Link></div>
-            <div style={{display:"flex",alignItems:"center"}}>
-              <Link href="/search">Search</Link>
-            </div>
-          </div>
-          <div className="main-content">
-            <h1 className="wiki-title">Welcome to D4TW Wiki</h1>
-            <p className="wiki-subtitle">the brand intelligence base for Design for the Web</p>
-            <p className="wiki-stats">{articles.length} articles across {Object.keys(cats).length} categories &middot; {totalWords.toLocaleString()} words</p>
-            
-            <div className="two-col">
-              <div className="section-box">
-                <div className="section-header" style={{background:"var(--accent-strategy)",borderColor:"var(--accent-strategy-border)"}}>About</div>
-                <div className="section-body" style={{fontSize:"0.88rem"}}>
-                  <p>D4TW Wiki is a structured brand intelligence system compiled from strategic planning documents, call transcripts, and operational references.</p>
-                  <p style={{marginTop:"0.5rem"}}>It serves as the context layer for all AI agents — content writers, copy coaches, sales page builders, and email generators. Every claim is sourced. The wiki evolves with every new Fireflies transcription through the automated Filing Loop.</p>
-                </div>
-              </div>
-              <div className="section-box">
-                <div className="section-header" style={{background:"var(--accent-offers)",borderColor:"var(--accent-offers-border)"}}>Wiki Health</div>
-                <div className="section-body">
-                  <div className="health-grid">
-                    <div className="health-stat"><div className="num">{articles.length}</div><div className="label">Articles</div></div>
-                    <div className="health-stat"><div className="num">{totalWords.toLocaleString()}</div><div className="label">Words</div></div>
-                    <div className="health-stat"><div className="num">{activeCount}/{articles.length}</div><div className="label">Active</div></div>
-                    <div className="health-stat"><div className="num">{Object.keys(cats).length}</div><div className="label">Categories</div></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div className="section-box" style={{marginTop:"1rem"}}>
-              <div className="section-header" style={{background:"var(--accent-audience)",borderColor:"var(--accent-audience-border)"}}>Recently Updated</div>
-              <div className="section-body">
-                <ul className="recent-list">
-                  {recent.map(a => (
-                    <li key={a.slug}>
-                      <Link href={`/article/${a.slug}`}>{a.title}</Link>
-                      <span className="date">({a.updated_at?.slice(0,10)})</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            
-            <div className="section-box" style={{marginTop:"1rem"}}>
-              <div className="section-header" style={{background:"var(--accent-identity)",borderColor:"var(--accent-identity-border)"}}>Browse by Category</div>
-              <div className="section-body">
-                <div className="category-browse">
-                  {Object.entries(cats).sort((a,b) => b[1]-a[1]).map(([cat, count]) => (
-                    <div className="category-item" key={cat}>
-                      <Link href={`/category/${cat}`}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</Link>
-                      <span> — {CAT_DESC[cat] || ""} ({count})</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+
+      <h2 style={{ fontSize: '1rem', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: '0.75rem' }}>Recently Updated</h2>
+      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginBottom: '2rem' }}>
+        {recent.map((a: any) => (
+          <a key={a.slug} href={`/article/${a.slug}`}
+            style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 1rem', borderBottom: '1px solid #f3f4f6', textDecoration: 'none', color: 'inherit' }}>
+            <span>
+              <span style={{ fontSize: '0.7rem', background: '#f3f4f6', padding: '2px 8px', borderRadius: 99, marginRight: 8 }}>{a.category}</span>
+              <span style={{ fontSize: '0.875rem' }}>{a.title}</span>
+            </span>
+            <span style={{ fontSize: '0.75rem', color: '#999' }}>{new Date(a.updated_at).toLocaleDateString()}</span>
+          </a>
+        ))}
       </div>
-    </>
+
+      <h2 style={{ fontSize: '1rem', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginBottom: '0.75rem' }}>Browse by Category</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '2rem' }}>
+        {categories.filter((c: any) => !['meta', 'schema'].includes(c.category)).map((c: any) => (
+          <a key={c.category} href={`/category/${c.category}`}
+            style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: '1rem', textDecoration: 'none', color: 'inherit' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.875rem', textTransform: 'capitalize' }}>{c.category}</div>
+            <div style={{ fontSize: '0.75rem', color: '#999' }}>{c.article_count} articles</div>
+          </a>
+        ))}
+      </div>
+
+      <div style={{ textAlign: 'center' }}>
+        <a href="/search" style={{ color: '#2563eb', fontSize: '0.875rem' }}>Search the wiki →</a>
+      </div>
+    </div>
   );
 }
